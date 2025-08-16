@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Doris fork
         uses: actions/checkout@v4
         with:
-          repository: chong-spatial/doris  # Your fork
+          repository: chong-spatial/doris
           token: ${{ secrets.PAT }}
           path: doris-fork
           fetch-depth: 0
@@ -30,11 +30,13 @@ jobs:
           git checkout master
           git reset --hard upstream/master
           
-          # Remove all workflows
+          # Force-remove workflows despite .gitignore
           rm -rf .github/workflows
-          if git status --porcelain | grep .github/workflows; then
-            git add .github/workflows
-            git commit -m "Remove workflows"
+          git add -f .github/workflows || true  # Force-add ignored files
+          
+          # Check if there are changes to commit
+          if ! git diff --cached --quiet || ! git diff --quiet; then
+            git commit -m "Remove workflows" || true
           fi
           git push origin master --force
 
@@ -56,10 +58,14 @@ jobs:
           cd doris-fork
           git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
           git reset --hard upstream/branch-4.0
+          
+          # Force-remove workflows despite .gitignore
           rm -rf .github/workflows
-          if git status --porcelain | grep .github/workflows; then
-            git add .github/workflows
-            git commit -m "Remove workflows"
+          git add -f .github/workflows || true
+          
+          # Check if there are changes to commit
+          if ! git diff --cached --quiet || ! git diff --quiet; then
+            git commit -m "Remove workflows" || true
           fi
           git push origin branch-4.0 --force
 
