@@ -30,13 +30,15 @@ jobs:
           git checkout master
           git reset --hard upstream/master
           
-          # Force-remove workflows despite .gitignore
-          rm -rf .github/workflows
-          git add -f .github/workflows || true  # Force-add ignored files
+          # Remove all workflows (ignore errors)
+          rm -rf .github/workflows || true
           
-          # Check if there are changes to commit
-          if ! git diff --cached --quiet || ! git diff --quiet; then
-            git commit -m "Remove workflows" || true
+          # Force-add and commit if changes exist
+          git add -f .github/workflows 2>/dev/null || true
+          if git diff-index --quiet --cached HEAD --; then
+            echo "No workflow changes to commit"
+          else
+            git commit -m "Remove workflows"
           fi
           git push origin master --force
 
@@ -59,13 +61,15 @@ jobs:
           git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
           git reset --hard upstream/branch-4.0
           
-          # Force-remove workflows despite .gitignore
-          rm -rf .github/workflows
-          git add -f .github/workflows || true
+          # Remove all workflows (ignore errors)
+          rm -rf .github/workflows || true
           
-          # Check if there are changes to commit
-          if ! git diff --cached --quiet || ! git diff --quiet; then
-            git commit -m "Remove workflows" || true
+          # Force-add and commit if changes exist
+          git add -f .github/workflows 2>/dev/null || true
+          if git diff-index --quiet --cached HEAD --; then
+            echo "No workflow changes to commit"
+          else
+            git commit -m "Remove workflows"
           fi
           git push origin branch-4.0 --force
 
