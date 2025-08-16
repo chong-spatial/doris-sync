@@ -17,6 +17,12 @@ jobs:
           path: doris-fork
           fetch-depth: 0
 
+      - name: Configure Git
+        run: |
+          cd doris-fork
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+
       - name: Add upstream repository
         run: |
           cd doris-fork
@@ -30,14 +36,14 @@ jobs:
           git checkout master
           git reset --hard upstream/master
           
-          # Remove all workflows (ignore errors)
+          # Remove all workflows
           rm -rf .github/workflows || true
           
-          # Force-add and commit if changes exist
+          # Force-add workflows directory
           git add -f .github/workflows 2>/dev/null || true
-          if git diff-index --quiet --cached HEAD --; then
-            echo "No workflow changes to commit"
-          else
+          
+          # Commit only if changes exist
+          if ! git diff --cached --quiet; then
             git commit -m "Remove workflows"
           fi
           git push origin master --force
@@ -61,14 +67,14 @@ jobs:
           git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
           git reset --hard upstream/branch-4.0
           
-          # Remove all workflows (ignore errors)
+          # Remove all workflows
           rm -rf .github/workflows || true
           
-          # Force-add and commit if changes exist
+          # Force-add workflows directory
           git add -f .github/workflows 2>/dev/null || true
-          if git diff-index --quiet --cached HEAD --; then
-            echo "No workflow changes to commit"
-          else
+          
+          # Commit only if changes exist
+          if ! git diff --cached --quiet; then
             git commit -m "Remove workflows"
           fi
           git push origin branch-4.0 --force
