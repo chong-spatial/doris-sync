@@ -36,15 +36,12 @@ jobs:
           git checkout master
           git reset --hard upstream/master
           
-          # Remove all workflows
-          rm -rf .github/workflows || true
+          # Remove entire .github directory using Git
+          git rm -rf --ignore-unmatch .github
           
-          # Force-add workflows directory
-          git add -f .github/workflows 2>/dev/null || true
-          
-          # Commit only if changes exist
+          # Push changes
           if ! git diff --cached --quiet; then
-            git commit -m "Remove workflows"
+            git commit -m "Remove GitHub-specific files"
           fi
           git push origin master --force
 
@@ -67,15 +64,12 @@ jobs:
           git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
           git reset --hard upstream/branch-4.0
           
-          # Remove all workflows
-          rm -rf .github/workflows || true
+          # Remove entire .github directory using Git
+          git rm -rf --ignore-unmatch .github
           
-          # Force-add workflows directory
-          git add -f .github/workflows 2>/dev/null || true
-          
-          # Commit only if changes exist
+          # Push changes
           if ! git diff --cached --quiet; then
-            git commit -m "Remove workflows"
+            git commit -m "Remove GitHub-specific files"
           fi
           git push origin branch-4.0 --force
 
