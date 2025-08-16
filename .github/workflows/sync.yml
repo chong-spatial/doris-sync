@@ -1,0 +1,69 @@
+name: Sync Apache Doris Fork
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # Daily at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync-fork:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Doris fork
+        uses: actions/checkout@v4
+        with:
+          repository: chong-spatial/doris  # Your fork
+          token: ${{ secrets.PAT }}
+          path: doris-fork
+          fetch-depth: 0
+
+      - name: Add upstream repository
+        run: |
+          cd doris-fork
+          git remote add upstream https://github.com/apache/doris.git
+          git fetch upstream --prune
+
+      # Sync master branch
+      - name: Sync master branch
+        run: |
+          cd doris-fork
+          git checkout master
+          git reset --hard upstream/master
+          
+          # Remove all workflows
+          rm -rf .github/workflows
+          if git status --porcelain | grep .github/workflows; then
+            git add .github/workflows
+            git commit -m "Remove workflows"
+          fi
+          git push origin master --force
+
+      # Check if branch-4.0 exists upstream
+      - name: Check for branch-4.0
+        id: branch-check
+        run: |
+          cd doris-fork
+          if git show-ref --verify --quiet refs/remotes/upstream/branch-4.0; then
+            echo "branch_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "branch_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Sync branch-4.0 if exists
+      - name: Sync branch-4.0
+        if: steps.branch-check.outputs.branch_exists == 'true'
+        run: |
+          cd doris-fork
+          git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
+          git reset --hard upstream/branch-4.0
+          rm -rf .github/workflows
+          if git status --porcelain | grep .github/workflows; then
+            git add .github/workflows
+            git commit -m "Remove workflows"
+          fi
+          git push origin branch-4.0 --force
+
+      - name: Cleanup
+        run: |
+          cd doris-fork
+          git remote remove upstream
