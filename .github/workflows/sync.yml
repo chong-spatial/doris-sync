@@ -8,20 +8,16 @@ on:
 jobs:
   sync-fork:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Reduced timeout
+    timeout-minutes: 10
+    
     steps:
-      - name: Checkout Doris fork (minimal clone)
+      - name: Checkout Doris fork
         uses: actions/checkout@v4
         with:
           repository: chong-spatial/doris
           token: ${{ secrets.PAT }}
           path: doris-fork
-          fetch-depth: 1  # Only latest commit
-          sparse-checkout: |
-            *
-            !.github/workflows
-            !.github/actions
-            !.github/ISSUE_TEMPLATE
+          fetch-depth: 1  # Shallow clone
 
       - name: Configure Git
         run: |
@@ -29,15 +25,30 @@ jobs:
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
 
-      - name: Add upstream and fetch only needed branches
+      - name: Add upstream repository
         run: |
           cd doris-fork
           git remote add upstream https://github.com/apache/doris.git
-          # Fetch only master and check for branch-4.0 with minimal data
-          git fetch --depth=1 upstream master
-          git ls-remote --heads upstream branch-4.0 | grep -q branch-4.0 && \
-            echo "branch_exists=true" >> $GITHUB_OUTPUT || \
+
+      - name: Check for branch-4.0
+        id: branch-check
+        run: |
+          cd doris-fork
+          # Check if branch exists without fetching all refs
+          if git ls-remote --exit-code --heads upstream refs/heads/branch-4.0; then
+            echo "branch_exists=true" >> $GITHUB_OUTPUT
+          else
             echo "branch_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch upstream changes
+        run: |
+          cd doris-fork
+          # Fetch only the branches we need
+          git fetch --depth=1 upstream master
+          if [ "${{ steps.branch-check.outputs.branch_exists }}" = 'true' ]; then
+            git fetch --depth=1 upstream branch-4.0
+          fi
 
       # Sync master branch
       - name: Sync master branch
@@ -46,35 +57,33 @@ jobs:
           git checkout master
           git reset --hard upstream/master
           
-          # Only remove .github if it exists
+          # Check if .github exists before trying to remove
           if [ -d ".github" ]; then
             git rm -rf --ignore-unmatch .github
-            # Only commit and push if changes were made
+            # Only commit if changes were made
             if ! git diff --cached --quiet; then
               git commit -m "Remove GitHub-specific files"
-              git push origin master --force
             fi
           fi
+          git push origin master --force
 
       # Sync branch-4.0 if exists
       - name: Sync branch-4.0
         if: steps.branch-check.outputs.branch_exists == 'true'
         run: |
           cd doris-fork
-          # Fetch only the needed branch
-          git fetch --depth=1 upstream branch-4.0
           git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
           git reset --hard upstream/branch-4.0
           
-          # Only remove .github if it exists
+          # Check if .github exists before trying to remove
           if [ -d ".github" ]; then
             git rm -rf --ignore-unmatch .github
-            # Only commit and push if changes were made
+            # Only commit if changes were made
             if ! git diff --cached --quiet; then
               git commit -m "Remove GitHub-specific files"
-              git push origin branch-4.0 --force
             fi
           fi
+          git push origin branch-4.0 --force
 
       - name: Cleanup
         run: |
