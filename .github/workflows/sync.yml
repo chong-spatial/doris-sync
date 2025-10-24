@@ -108,6 +108,20 @@ jobs:
             # Mirror the tag to origin (force in case it changed upstream)
             git push origin "refs/tags/$TG:refs/tags/$TG" --force
           done
+          
+      - name: Prune non-4.* tags from origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-remote --tags --refs origin 'refs/tags/*' \
+            | awk '{print $2}' \
+            | sed 's#refs/tags/##' \
+            | grep -v '^4\.' \
+            | while read -r TG; do
+                [ -z "$TG" ] && continue
+                echo "Deleting non-4.x tag: $TG"
+                git push origin ":refs/tags/$TG"
+              done
 
       - name: Cleanup
         shell: bash
