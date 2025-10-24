@@ -110,9 +110,14 @@ jobs:
           done
           
       - name: Prune non-4.* tags from origin
+        working-directory: doris-fork
         shell: bash
         run: |
           set -euo pipefail
+          # Sanity check: show remotes
+          git remote -v
+      
+          # List tags on origin, filter out those starting with 4., delete the rest
           git ls-remote --tags --refs origin 'refs/tags/*' \
             | awk '{print $2}' \
             | sed 's#refs/tags/##' \
