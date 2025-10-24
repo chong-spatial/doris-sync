@@ -59,7 +59,7 @@ jobs:
             | sed 's#refs/tags/##' \
             | sort -V)
 
-          # Save lists and expose as outputs
+          # Save lists and expose as outputs (comma-separated)
           echo "branch_list=$(paste -sd, .branches)" >> $GITHUB_OUTPUT
           if [ -n "$TAGS" ]; then
             printf "%s\n" $TAGS > .tags
@@ -67,6 +67,7 @@ jobs:
           else
             echo "tag_list=" >> $GITHUB_OUTPUT
           fi
+
       - name: Sync branches (master + branch-4.*)
         if: steps.discover.outputs.branch_list != ''
         shell: bash
@@ -76,9 +77,10 @@ jobs:
           IFS=',' read -ra BRS <<< "${{ steps.discover.outputs.branch_list }}"
           for BR in "${BRS[@]}"; do
             echo "==> Syncing branch: $BR"
-            # Fetch only that branch (shallow)
-            git fetch --depth=1 upstream "$BR"
-            # Reset local branch to upstream state
+            # Fetch only this branch, shallow and without tags to keep it fast
+            git fetch --no-tags --depth=1 upstream "$BR"
+
+            # Reset local branch to upstream state (creates/updates local branch)
             git checkout -B "$BR" "upstream/$BR"
             git reset --hard "upstream/$BR"
 
@@ -108,25 +110,6 @@ jobs:
             # Mirror the tag to origin (force in case it changed upstream)
             git push origin "refs/tags/$TG:refs/tags/$TG" --force
           done
-          
-      # - name: Prune non-4.* tags from origin
-      #   working-directory: doris-fork
-      #   shell: bash
-      #   run: |
-      #     set -euo pipefail
-      #     # Sanity check: show remotes
-      #     git remote -v
-      
-      #     # List tags on origin, filter out those starting with 4., delete the rest
-      #     git ls-remote --tags --refs origin 'refs/tags/*' \
-      #       | awk '{print $2}' \
-      #       | sed 's#refs/tags/##' \
-      #       | grep -v '^4\.' \
-      #       | while read -r TG; do
-      #           [ -z "$TG" ] && continue
-      #           echo "Deleting non-4.x tag: $TG"
-      #           git push origin ":refs/tags/$TG"
-      #         done
 
       - name: Cleanup
         shell: bash
