@@ -5,11 +5,15 @@ on:
     - cron: "0 0 * * *"  # Daily at 00:00 UTC
   workflow_dispatch:
 
+concurrency:
+  group: sync-doris
+  cancel-in-progress: true
+
 jobs:
   sync-fork:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    
+    timeout-minutes: 15
+
     steps:
       - name: Checkout Doris fork
         uses: actions/checkout@v4
@@ -17,75 +21,97 @@ jobs:
           repository: chong-spatial/doris
           token: ${{ secrets.PAT }}
           path: doris-fork
-          fetch-depth: 1  # Shallow clone
+          fetch-depth: 1
 
       - name: Configure Git
+        shell: bash
         run: |
+          set -euo pipefail
           cd doris-fork
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
+          git config pull.rebase false
 
-      - name: Add upstream repository
+      - name: Add upstream and discover refs to sync
+        id: discover
+        shell: bash
         run: |
+          set -euo pipefail
           cd doris-fork
           git remote add upstream https://github.com/apache/doris.git
 
-      - name: Check for branch-4.0
-        id: branch-check
-        run: |
-          cd doris-fork
-          # Check if branch exists without fetching all refs
-          if git ls-remote --exit-code --heads upstream refs/heads/branch-4.0; then
-            echo "branch_exists=true" >> $GITHUB_OUTPUT
+          # Discover all branch-4.* branches upstream
+          BRANCHES=$(git ls-remote --heads upstream 'refs/heads/branch-4.*' \
+            | awk '{print $2}' \
+            | sed 's#refs/heads/##' \
+            | sort -V)
+
+          # We always include master explicitly
+          echo "master" > .branches
+          for b in $BRANCHES; do
+            echo "$b" >> .branches
+          done
+
+          # Discover tags starting with 4.
+          # '--refs' ignores lightweight tag deref lines (^{}).
+          TAGS=$(git ls-remote --tags --refs upstream 'refs/tags/4.*' \
+            | awk '{print $2}' \
+            | sed 's#refs/tags/##' \
+            | sort -V)
+
+          # Save lists and expose as outputs
+          echo "branch_list=$(paste -sd, .branches)" >> $GITHUB_OUTPUT
+          if [ -n "$TAGS" ]; then
+            printf "%s\n" $TAGS > .tags
+            echo "tag_list=$(paste -sd, .tags)" >> $GITHUB_OUTPUT
           else
-            echo "branch_exists=false" >> $GITHUB_OUTPUT
+            echo "tag_list=" >> $GITHUB_OUTPUT
           fi
-
-      - name: Fetch upstream changes
+      - name: Sync branches (master + branch-4.*)
+        if: steps.discover.outputs.branch_list != ''
+        shell: bash
         run: |
+          set -euo pipefail
           cd doris-fork
-          # Fetch only the branches we need
-          git fetch --depth=1 upstream master
-          if [ "${{ steps.branch-check.outputs.branch_exists }}" = 'true' ]; then
-            git fetch --depth=1 upstream branch-4.0
-          fi
+          IFS=',' read -ra BRS <<< "${{ steps.discover.outputs.branch_list }}"
+          for BR in "${BRS[@]}"; do
+            echo "==> Syncing branch: $BR"
+            # Fetch only that branch (shallow)
+            git fetch --depth=1 upstream "$BR"
+            # Reset local branch to upstream state
+            git checkout -B "$BR" "upstream/$BR"
+            git reset --hard "upstream/$BR"
 
-      # Sync master branch
-      - name: Sync master branch
-        run: |
-          cd doris-fork
-          git checkout master
-          git reset --hard upstream/master
-          
-          # Check if .github exists before trying to remove
-          if [ -d ".github" ]; then
-            git rm -rf --ignore-unmatch .github
-            # Only commit if changes were made
-            if ! git diff --cached --quiet; then
-              git commit -m "Remove GitHub-specific files"
+            # Remove .github dir if present, commit only if there are changes
+            if [ -d ".github" ]; then
+              git rm -rf --ignore-unmatch .github
+              if ! git diff --cached --quiet; then
+                git commit -m "Remove GitHub-specific files"
+              fi
             fi
-          fi
-          git push origin master --force
 
-      # Sync branch-4.0 if exists
-      - name: Sync branch-4.0
-        if: steps.branch-check.outputs.branch_exists == 'true'
+            # Force update the fork's branch
+            git push origin "$BR" --force
+          done
+
+      - name: Sync tags starting with 4.
+        if: steps.discover.outputs.tag_list != ''
+        shell: bash
         run: |
+          set -euo pipefail
           cd doris-fork
-          git checkout branch-4.0 2>/dev/null || git checkout -b branch-4.0 upstream/branch-4.0
-          git reset --hard upstream/branch-4.0
-          
-          # Check if .github exists before trying to remove
-          if [ -d ".github" ]; then
-            git rm -rf --ignore-unmatch .github
-            # Only commit if changes were made
-            if ! git diff --cached --quiet; then
-              git commit -m "Remove GitHub-specific files"
-            fi
-          fi
-          git push origin branch-4.0 --force
+          IFS=',' read -ra TAGS <<< "${{ steps.discover.outputs.tag_list }}"
+          for TG in "${TAGS[@]}"; do
+            echo "==> Syncing tag: $TG"
+            # Fetch the specific tag object (and the commit it points to)
+            git fetch --depth=1 upstream tag "$TG"
+            # Mirror the tag to origin (force in case it changed upstream)
+            git push origin "refs/tags/$TG:refs/tags/$TG" --force
+          done
 
       - name: Cleanup
+        shell: bash
         run: |
+          set -euo pipefail
           cd doris-fork
-          git remote remove upstream
+          git remote remove upstream || true
